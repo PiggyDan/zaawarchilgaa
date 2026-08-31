@@ -27,35 +27,50 @@ const companyMap = Object.fromEntries(
   companyOptions.map((company) => [company.value, company])
 );
 
-const emailRecipients = "admin@gkllc.mn,it@gkllc.mn";
-
-function formatEmailBody(formData, employeeList, signatureData) {
-  const employeeText = employeeList
+function buildEmailHtml(formData, employeeList, signatureData) {
+  const employeeHtml = employeeList
     .map(
-      (employee, index) =>
-        `Ажилтан ${index + 1}:\n` +
-        `  Овог нэр: ${employee.name}\n` +
-        `  Албан тушаал: ${employee.position}\n` +
-        `  Утас: ${employee.phone}\n`
+      (employee, index) => `
+        <tr>
+          <td colspan="2" style="padding:8px 0; border-bottom:1px solid #e5e7eb; font-weight:600;">Ажилтан ${index + 1}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0; width:180px;">Овог нэр</td>
+          <td>${employee.name || "-"}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;">Албан тушаал</td>
+          <td>${employee.position || "-"}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;">Утас</td>
+          <td>${employee.phone || "-"}</td>
+        </tr>
+      `
     )
-    .join("\n");
+    .join("");
 
-  return [
-    "Аяллын аюулгүй ажиллагааны маягт",
-    "",
-    `Компани: ${formData.company}`,
-    `Хэлтэс: ${formData.department}`,
-    `Аялах өдөр: ${formData.travelDate}`,
-    `Чиглэл: ${formData.direction === "Бусад" ? formData.otherDirection : formData.direction}`,
-    `Тээврийн хэрэгсэл: ${formData.transport}`,
-    `Жолооч: ${formData.driver || "-"}`,
-    `Машин: ${formData.vehicle || "-"}`,
-    "",
-    "Зорчих ажилтан:",
-    employeeText,
-    "",
-    signatureData ? `Гарын үсэг: ${signatureData}` : "Гарын үсэг: Ороогүй",
-  ].join("\n");
+  return `
+    <div style="font-family:Arial,sans-serif; line-height:1.5; color:#111827;">
+      <h2 style="margin:0 0 12px;">Аяллын аюулгүй ажиллагааны маягт</h2>
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; max-width:700px;">
+        <tr><td style="padding:6px 0; width:180px;">Компани</td><td>${formData.company}</td></tr>
+        <tr><td style="padding:6px 0;">Хэлтэс</td><td>${formData.department}</td></tr>
+        <tr><td style="padding:6px 0;">Аялах өдөр</td><td>${formData.travelDate}</td></tr>
+        <tr><td style="padding:6px 0;">Чиглэл</td><td>${formData.direction === "Бусад" ? formData.otherDirection : formData.direction}</td></tr>
+        <tr><td style="padding:6px 0;">Тээврийн хэрэгсэл</td><td>${formData.transport}</td></tr>
+        <tr><td style="padding:6px 0;">Жолооч</td><td>${formData.driver || "-"}</td></tr>
+        <tr><td style="padding:6px 0;">Машин</td><td>${formData.vehicle || "-"}</td></tr>
+        ${employeeHtml}
+        <tr>
+          <td style="padding:12px 0 6px; vertical-align:top;">Гарын үсэг</td>
+          <td style="padding:12px 0 6px;">
+            ${signatureData ? `<img src="${signatureData}" alt="Signature" style="max-width:220px; max-height:120px; border:1px solid #d1d5db; border-radius:6px;" />` : "Ороогүй"}
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
 }
 
 function CompanyLogo({ companyName }) {
@@ -118,7 +133,7 @@ function App() {
     setEmployees(employees.filter((_, i) => i !== index));
   };
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
 
     const missing = [];
@@ -143,29 +158,44 @@ function App() {
       return;
     }
 
-    const emailBody = formatEmailBody(form, employees, signature);
-    const emailLink = `mailto:${emailRecipients}?subject=${encodeURIComponent(
-      `Travel safety form - ${form.company}`
-    )}&body=${encodeURIComponent(emailBody)}`;
+    try {
+      const response = await fetch("/api/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          form,
+          employees,
+          signature
+        })
+      });
 
-    window.location.href = emailLink;
+      const data = await response.json().catch(() => ({}));
 
-    setSubmitted(true);
-    setAccepted(false);
-    setSignature("");
-    setEmployees([emptyEmployee()]);
-    setForm({
-      company: "Говьхангайн Хөдөлмөр ХХК",
-      department: "",
-      travelDate: "",
-      direction: "",
-      otherDirection: "",
-      transport: "Байгууллагын унаагаар",
-      driver: "",
-      vehicle: ""
-    });
-    setShowSafety(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send the form.");
+      }
+
+      setSubmitted(true);
+      setAccepted(false);
+      setSignature("");
+      setEmployees([emptyEmployee()]);
+      setForm({
+        company: "Говьхангайн Хөдөлмөр ХХК",
+        department: "",
+        travelDate: "",
+        direction: "",
+        otherDirection: "",
+        transport: "Байгууллагын унаагаар",
+        driver: "",
+        vehicle: ""
+      });
+      setShowSafety(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      alert(error.message || "Илгээхэд асуудал гарлаа. Та дахин оролдоно уу.");
+    }
   };
 
   const handleSignatureUpload = (e) => {
