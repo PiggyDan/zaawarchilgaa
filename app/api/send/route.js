@@ -8,16 +8,21 @@ export async function POST(req) {
     const body = await req.json();
 
     const { data, error } = await resend.emails.send({
-      from: "Office Form <noreply@office.gkllc.mn>",
-      to: ["admin@gkllc.mn", "it@gkllc.mn"],
-      subject: "Шинэ томилолтын хүсэлт",
-      html: `
-        <h2>Шинэ хүсэлт</h2>
-        <p><strong>Нэр:</strong> ${body.name || ""}</p>
-        <p><strong>Компани:</strong> ${body.company || ""}</p>
-        <p><strong>Утас:</strong> ${body.phone || ""}</p>
-      `,
-    });
+        from: "Travel Form <noreply@office.gkllc.mn>",
+        to: [
+          "admin@gkllc.mn",
+          "it@gkllc.mn"
+        ],
+        subject: "Аяллын аюулгүй ажиллагааны маягт",
+        html: htmlContent
+      });
+
+      if (error) {
+        console.error("RESEND ERROR:", error);
+        return Response.json({ error }, { status: 500 });
+      }
+
+return Response.json({ success: true, data });
 
     if (error) {
       console.error("RESEND ERROR:", error);
