@@ -52,7 +52,7 @@ export default async function handler(req, res) {
 
   try {
     const emailResponse = await resend.emails.send({
-      from: "Travel Form <noreply@resend.dev>",
+      from: "GKLLC Office <noreply@gkllc.mn>",
       to: ["admin@gkllc.mn", "it@gkllc.mn"],
       subject: `New travel safety form - ${form.company || "Company"}`,
       html,
