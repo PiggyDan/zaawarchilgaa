@@ -8,7 +8,7 @@ export async function POST(req) {
     const body = await req.json();
 
     const { data, error } = await resend.emails.send({
-        from: "Travel Form <noreply@office.gkllc.mn>",
+        from: "Travel Form <noreply@gkllc.mn>",
         to: [
           "admin@gkllc.mn",
           "it@gkllc.mn"
