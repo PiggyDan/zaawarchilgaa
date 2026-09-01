@@ -13,7 +13,7 @@ export async function POST(req) {
           "admin@gkllc.mn",
           "it@gkllc.mn"
         ],
-        subject: "Аяллын аюулгүй ажиллагааны маягт",
+        subject: "Аяллын аюулгүй Зааварчилгааны маягт",
         html: htmlContent
       });
 

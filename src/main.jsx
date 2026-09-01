@@ -52,7 +52,7 @@ function buildEmailHtml(formData, employeeList, signatureData) {
 
   return `
     <div style="font-family:Arial,sans-serif; line-height:1.5; color:#111827;">
-      <h2 style="margin:0 0 12px;">Аяллын аюулгүй ажиллагааны маягт</h2>
+      <h2 style="margin:0 0 12px;">Аяллын аюулгүй Зааварчилгааны маягт</h2>
       <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; max-width:700px;">
         <tr><td style="padding:6px 0; width:180px;">Компани</td><td>${formData.company}</td></tr>
         <tr><td style="padding:6px 0;">Хэлтэс</td><td>${formData.department}</td></tr>
@@ -231,7 +231,7 @@ function App() {
             <CompanyLogo companyName={form.company} />
           </div>
           <div className="titleArea">
-            <h1>АТҮТ БОЛОН ХУВИЙН УНААГААР ЗОРЧИХ ҮЕИЙН</h1>
+            <h1>АТҮТ БОЛОН ЗАМЫН УНААГААР ЗОРЧИХ ҮЕИЙН</h1>
             <h1>АЮУЛГҮЙ АЖИЛЛАГААНЫ ЗААВАРЧИЛГАА</h1>
             <div className="meta">
               <span>Хувилбар: 03</span>
