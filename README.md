@@ -29,9 +29,12 @@ inline images.
 Configured in `.env.local`:
 
 - **Company SMTP** (default) — `gkllc.mn` mail is hosted by mail.mn, so
-  `SMTP_HOST=smtp.gkllc.mn` on port 587 (STARTTLS). Fill in `SMTP_USER` and
-  `SMTP_PASS` with the mailbox that should send the form. If port 587 is
-  blocked on the network, use `SMTP_PORT=465` with `SMTP_SECURE=true`.
+  `SMTP_HOST=smtp.mail.mn` on port 587 (STARTTLS). Use `smtp.mail.mn`
+  rather than `smtp.gkllc.mn`: they are the same server, but the
+  certificate only covers `*.mail.mn`, so the `gkllc.mn` name fails TLS
+  hostname verification. Fill in `SMTP_USER` and `SMTP_PASS` with the
+  mailbox that sends the form. If port 587 is blocked on the network, use
+  `SMTP_PORT=465` with `SMTP_SECURE=true`.
 - **Resend** (fallback) — used only when `SMTP_HOST` is empty. Requires the
   `gkllc.mn` domain to be verified in Resend.
 
