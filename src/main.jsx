@@ -27,50 +27,50 @@ const companyMap = Object.fromEntries(
   companyOptions.map((company) => [company.value, company])
 );
 
-function buildEmailHtml(formData, employeeList, signatureData) {
-  const employeeHtml = employeeList
-    .map(
-      (employee, index) => `
-        <tr>
-          <td colspan="2" style="padding:8px 0; border-bottom:1px solid #e5e7eb; font-weight:600;">Ажилтан ${index + 1}</td>
-        </tr>
-        <tr>
-          <td style="padding:6px 0; width:180px;">Овог нэр</td>
-          <td>${employee.name || "-"}</td>
-        </tr>
-        <tr>
-          <td style="padding:6px 0;">Албан тушаал</td>
-          <td>${employee.position || "-"}</td>
-        </tr>
-        <tr>
-          <td style="padding:6px 0;">Утас</td>
-          <td>${employee.phone || "-"}</td>
-        </tr>
-      `
-    )
-    .join("");
+const SIGNATURE_MAX_EDGE = 900;
 
-  return `
-    <div style="font-family:Arial,sans-serif; line-height:1.5; color:#111827;">
-      <h2 style="margin:0 0 12px;">Аяллын аюулгүй Зааварчилгааны маягт</h2>
-      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; max-width:700px;">
-        <tr><td style="padding:6px 0; width:180px;">Компани</td><td>${formData.company}</td></tr>
-        <tr><td style="padding:6px 0;">Хэлтэс</td><td>${formData.department}</td></tr>
-        <tr><td style="padding:6px 0;">Аялах өдөр</td><td>${formData.travelDate}</td></tr>
-        <tr><td style="padding:6px 0;">Чиглэл</td><td>${formData.direction === "Бусад" ? formData.otherDirection : formData.direction}</td></tr>
-        <tr><td style="padding:6px 0;">Тээврийн хэрэгсэл</td><td>${formData.transport}</td></tr>
-        <tr><td style="padding:6px 0;">Жолооч</td><td>${formData.driver || "-"}</td></tr>
-        <tr><td style="padding:6px 0;">Машин</td><td>${formData.vehicle || "-"}</td></tr>
-        ${employeeHtml}
-        <tr>
-          <td style="padding:12px 0 6px; vertical-align:top;">Гарын үсэг</td>
-          <td style="padding:12px 0 6px;">
-            ${signatureData ? `<img src="${signatureData}" alt="Signature" style="max-width:220px; max-height:120px; border:1px solid #d1d5db; border-radius:6px;" />` : "Ороогүй"}
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
+/**
+ * Reads a signature image and scales it down, so a phone photo does not
+ * exceed the request body limit once base64-encoded.
+ */
+function readScaledImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const image = new Image();
+
+      image.onerror = () => reject(new Error("decode failed"));
+      image.onload = () => {
+        const scale = Math.min(
+          1,
+          SIGNATURE_MAX_EDGE / Math.max(image.width, image.height)
+        );
+
+        if (scale === 1 && dataUrl.length < 700_000) {
+          resolve(dataUrl);
+          return;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+
+        const context = canvas.getContext("2d");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+
+      image.src = dataUrl;
+    };
+
+    reader.readAsDataURL(file);
+  });
 }
 
 function CompanyLogo({ companyName }) {
@@ -99,6 +99,7 @@ function App() {
   const [accepted, setAccepted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [signature, setSignature] = useState("");
+  const [sending, setSending] = useState(false);
 
   const [form, setForm] = useState({
     company: "Говьхангайн Хөдөлмөр ХХК",
@@ -136,6 +137,8 @@ function App() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (sending) return;
+
     const missing = [];
 
     if (!form.department.trim()) missing.push("Харьяалагдах хэлтэс");
@@ -157,6 +160,8 @@ function App() {
       alert(`Дутуу байна: ${missing[0]}`);
       return;
     }
+
+    setSending(true);
 
     try {
       const response = await fetch("/api/send", {
@@ -195,16 +200,20 @@ function App() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       alert(error.message || "Илгээхэд асуудал гарлаа. Та дахин оролдоно уу.");
+    } finally {
+      setSending(false);
     }
   };
 
-  const handleSignatureUpload = (e) => {
+  const handleSignatureUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => setSignature(reader.result);
-    reader.readAsDataURL(file);
+    try {
+      setSignature(await readScaledImage(file));
+    } catch {
+      alert("Зургийг уншиж чадсангүй. Өөр зураг сонгоно уу.");
+    }
   };
 
   if (submitted) {
@@ -492,8 +501,8 @@ function App() {
           </Section>
 
           <div className="submitArea">
-            <button className="submitBtn" type="submit" disabled={!accepted}>
-              Илгээх
+            <button className="submitBtn" type="submit" disabled={!accepted || sending}>
+              {sending ? "Илгээж байна..." : "Илгээх"}
             </button>
           </div>
         </form>

@@ -1,21 +1,45 @@
 # Simple Company Travel Form
 
-A simplified React + Vite travel safety form based on the provided company PDF.
+A React + Vite travel safety form. On submit, the form is emailed to the
+company recipients with the uploaded signature embedded in the message.
 
 ## Run
 ```bash
 npm install
+cp .env.local.example .env.local   # then fill in credentials
 npm run dev
 ```
 
-## Current behavior
-This version is intentionally simple and frontend-only.
-The submit button currently confirms submission on-screen.
+## Email delivery
 
-## Next production step
-Connect the submit handler to:
-- an API/database,
-- email notification,
-- Odoo,
-- Google Sheets,
-- or another company backend.
+Submitting POSTs to `/api/send`, which mails the form to:
+
+- it@gkllc.mn
+- admin@gkllc.mn
+- share@gkllc.mn
+
+Override the list with `MAIL_TO` (comma-separated) if needed.
+
+The signature image is sent both as an inline image in the email body and as
+an attachment (`garyn-useg.*`), so it stays visible even in clients that block
+inline images.
+
+### Providers
+
+Configured in `.env.local`:
+
+- **Company SMTP** (default) — `gkllc.mn` mail is hosted by mail.mn, so
+  `SMTP_HOST=smtp.gkllc.mn` on port 587 (STARTTLS). Fill in `SMTP_USER` and
+  `SMTP_PASS` with the mailbox that should send the form. If port 587 is
+  blocked on the network, use `SMTP_PORT=465` with `SMTP_SECURE=true`.
+- **Resend** (fallback) — used only when `SMTP_HOST` is empty. Requires the
+  `gkllc.mn` domain to be verified in Resend.
+
+Set the same variables in the Vercel project settings for production;
+`.env.local` is not deployed.
+
+## Files
+
+- `api/_form-mail.js` — validation, email template, delivery
+- `api/send.js` — Vercel serverless entry point
+- `vite.config.js` — serves the same handler locally during `npm run dev`
