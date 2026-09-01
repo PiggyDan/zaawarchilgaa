@@ -19,13 +19,11 @@ export async function POST(req) {
 
     const { data, error } = await resend.emails.send({
       from: "Travel Form <noreply@office.gkllc.mn>",
-
       to: [
         "admin@gkllc.mn",
         "it@gkllc.mn",
         "share@gkllc.mn",
       ],
-
       subject: "Аяллын аюулгүй зааварчилгаа маягт",
       html: htmlContent,
     });
@@ -39,17 +37,22 @@ export async function POST(req) {
           error: error.message || error,
         },
         {
-          status: 500,
+          status: 200,
         }
       );
     }
 
     console.log("EMAIL SENT:", data);
 
-    return Response.json({
-      success: true,
-      id: data.id,
-    });
+    return Response.json(
+      {
+        success: true,
+        id: data.id,
+      },
+      {
+        status: 200,
+      }
+    );
 
   } catch (error) {
     console.error("API ERROR:", error);
@@ -60,7 +63,7 @@ export async function POST(req) {
         error: error.message,
       },
       {
-        status: 500,
+        status: 200,
       }
     );
   }
