@@ -1,5 +1,4 @@
 import { Resend } from "resend";
-import { NextResponse } from "next/server";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -7,49 +6,62 @@ export async function POST(req) {
   try {
     const body = await req.json();
 
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif;">
+        <h2>Аяллын аюулгүй ажиллагааны маягт</h2>
+
+        <p><strong>Компани:</strong> ${body.company || ""}</p>
+        <p><strong>Хэлтэс:</strong> ${body.department || ""}</p>
+        <p><strong>Аялах өдөр:</strong> ${body.travelDate || ""}</p>
+        <p><strong>Чиглэл:</strong> ${body.route || ""}</p>
+      </div>
+    `;
+
     const { data, error } = await resend.emails.send({
-        from: "Travel Form <noreply@gkllc.mn>",
-        to: [
-          "admin@gkllc.mn",
-          "it@gkllc.mn"
-        ],
-        subject: "Аяллын аюулгүй Зааварчилгааны маягт",
-        html: htmlContent
-      });
+      from: "Travel Form <noreply@office.gkllc.mn>",
 
-      if (error) {
-        console.error("RESEND ERROR:", error);
-        return Response.json({ error }, { status: 500 });
-      }
+      to: [
+        "admin@gkllc.mn",
+        "it@gkllc.mn",
+        "share@gkllc.mn",
+      ],
 
-return Response.json({ success: true, data });
+      subject: "Аяллын аюулгүй зааварчилгаа маягт",
+      html: htmlContent,
+    });
 
     if (error) {
       console.error("RESEND ERROR:", error);
-      return NextResponse.json(
+
+      return Response.json(
         {
           success: false,
-          error,
+          error: error.message || error,
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
     console.log("EMAIL SENT:", data);
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
-      emailId: data.id,
+      id: data.id,
     });
-  } catch (err) {
-    console.error("API ERROR:", err);
 
-    return NextResponse.json(
+  } catch (error) {
+    console.error("API ERROR:", error);
+
+    return Response.json(
       {
         success: false,
-        error: err?.message || String(err),
+        error: error.message,
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
