@@ -117,22 +117,31 @@ async function findOrCreateFolder(drive, name, parentFolderId) {
   return created.data.id;
 }
 
-async function ensureYearMonthFolder(drive, parentFolderId) {
+async function ensureYearMonthFolder(drive, parentFolderId, travelDate) {
   // Matches the existing convention already in use in this Drive folder:
   // a flat "YYYY.MM" folder per month (e.g. "2026.09"), with a "MM.DD"
-  // subfolder per day (e.g. "09.07") holding that day's files.
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en", {
-    timeZone: "Asia/Ulaanbaatar",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  })
-    .formatToParts(now)
-    .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  // subfolder per day (e.g. "09.08") holding that day's files.
+  // Filed under the form's travel date (Аялах өдөр), not the submission date,
+  // since a form is often submitted ahead of the actual travel day.
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(travelDate || "");
+  let year, month, day;
+  if (match) {
+    [, year, month, day] = match;
+  } else {
+    // Fall back to today (Asia/Ulaanbaatar) if travelDate is missing/malformed.
+    const parts = new Intl.DateTimeFormat("en", {
+      timeZone: "Asia/Ulaanbaatar",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    })
+      .formatToParts(new Date())
+      .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+    ({ year, month, day } = parts);
+  }
 
-  const monthFolderId = await findOrCreateFolder(drive, `${parts.year}.${parts.month}`, parentFolderId);
-  return findOrCreateFolder(drive, `${parts.month}.${parts.day}`, monthFolderId);
+  const monthFolderId = await findOrCreateFolder(drive, `${year}.${month}`, parentFolderId);
+  return findOrCreateFolder(drive, `${month}.${day}`, monthFolderId);
 }
 
 async function uploadBufferToDrive(drive, buffer, filename, folderId) {
@@ -438,7 +447,7 @@ export async function sendFormMail(payload) {
         oauth2Client.setCredentials({ refresh_token: refreshToken });
         const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-        const targetFolderId = await ensureYearMonthFolder(drive, parentFolder);
+        const targetFolderId = await ensureYearMonthFolder(drive, parentFolder, form.travelDate);
 
         const now = new Date();
         const dtf = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
