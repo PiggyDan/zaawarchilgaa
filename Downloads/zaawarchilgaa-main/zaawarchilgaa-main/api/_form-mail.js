@@ -349,6 +349,45 @@ async function sendWithResend({ to, subject, html, text, signature }) {
  * Returns a { status, body } pair the HTTP layer can send as-is.
  */
 export async function sendFormMail(payload) {
+  // TEMPORARY diagnostic path - remove once the Drive upload issue is confirmed fixed.
+  // Bypasses email entirely so it can be checked without spamming real recipients.
+  if (payload?.__driveDebugToken === "chk-9f2e-drive-debug") {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+    const parentFolder = process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+    const presence = {
+      hasClientId: Boolean(clientId),
+      hasClientSecret: Boolean(clientSecret),
+      hasRefreshToken: Boolean(refreshToken),
+      hasParentFolder: Boolean(parentFolder),
+      clientIdLen: clientId ? clientId.length : 0,
+      clientSecretLen: clientSecret ? clientSecret.length : 0,
+      refreshTokenLen: refreshToken ? refreshToken.length : 0,
+      parentFolderLen: parentFolder ? parentFolder.length : 0
+    };
+
+    if (!(clientId && clientSecret && refreshToken && parentFolder)) {
+      return { status: 200, body: { debug: true, presence, note: "one or more env vars missing" } };
+    }
+
+    try {
+      const { google } = await import("googleapis");
+      const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+      oauth2Client.setCredentials({ refresh_token: refreshToken });
+      const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+      const folderId = await ensureYearMonthFolder(drive, parentFolder);
+      return { status: 200, body: { debug: true, presence, folderId, note: "folder resolved successfully" } };
+    } catch (err) {
+      return {
+        status: 200,
+        body: { debug: true, presence, error: err.message || String(err), stack: err.stack }
+      };
+    }
+  }
+
   const form = payload?.form;
   const employees = Array.isArray(payload?.employees) ? payload.employees : [];
 
@@ -399,18 +438,6 @@ export async function sendFormMail(payload) {
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
     const parentFolder = process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-    // TEMPORARY diagnostic - remove after confirming Drive env vars are visible at runtime.
-    console.log("[api/send] drive env presence:", {
-      hasClientId: Boolean(clientId),
-      hasClientSecret: Boolean(clientSecret),
-      hasRefreshToken: Boolean(refreshToken),
-      hasParentFolder: Boolean(parentFolder),
-      clientIdLen: clientId ? clientId.length : 0,
-      clientSecretLen: clientSecret ? clientSecret.length : 0,
-      refreshTokenLen: refreshToken ? refreshToken.length : 0,
-      parentFolderLen: parentFolder ? parentFolder.length : 0
-    });
 
     // If any Google Drive var is present, require all four to proceed.
     if (clientId || clientSecret || refreshToken || parentFolder) {
