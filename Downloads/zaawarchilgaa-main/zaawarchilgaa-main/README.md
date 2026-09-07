@@ -63,6 +63,22 @@ Environment variables to enable this feature (OAuth2):
 - `GOOGLE_REFRESH_TOKEN` — long-lived refresh token obtained by authorizing the OAuth client for a Google account that has access to the parent Drive folder.
 - `GOOGLE_DRIVE_FOLDER_ID` — the Drive folder ID where year/month folders are created (parent). Defaults to `1eo0sL-_KWR175y9z31cyKQiv_kvgeoKh`.
 
+### One-time setup
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an
+   **OAuth client ID** of type **Desktop app** (enable the Google Drive API for the project first).
+   Copy the generated client ID and client secret.
+2. Generate a refresh token:
+   ```bash
+   GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... npm run get:google-token
+   ```
+   This opens a browser, asks you to sign in with the Google account that has
+   Editor access to the target Drive folder, and prints a `GOOGLE_REFRESH_TOKEN=...`
+   line in the terminal.
+3. Add all three values (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`)
+   plus `GOOGLE_DRIVE_FOLDER_ID` to `.env.local` for local dev, and to the Vercel
+   project's Environment Variables for production.
+
 Notes:
 - The OAuth client and refresh token allow the server to obtain access tokens and upload files without service account keys.
 - Share the parent Drive folder with the Google account that the refresh token belongs to (Editor access), or use the same account that owns the folder.
