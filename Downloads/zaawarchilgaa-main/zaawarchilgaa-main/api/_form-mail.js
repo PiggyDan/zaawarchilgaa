@@ -95,24 +95,11 @@ async function buildPdfBuffer(form, employees, signature) {
   return Buffer.concat(buffers);
 }
 
-async function ensureYearMonthFolder(drive, parentFolderId) {
-  // Matches the existing convention already in use in this Drive folder:
-  // a single flat "YYYY.MM" folder per month (e.g. "2026.09"), not a
-  // nested Year/MonthName structure.
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en", {
-    timeZone: "Asia/Ulaanbaatar",
-    year: "numeric",
-    month: "2-digit"
-  })
-    .formatToParts(now)
-    .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
-  const folderName = `${parts.year}.${parts.month}`;
-
-  // supportsAllDrives/includeItemsFromAllDrives are required whenever the
-  // parent folder lives inside a Shared Drive rather than "My Drive" -
-  // otherwise the API reports the folder as not found even with access.
-  const q = `name = '${folderName}' and '${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+// supportsAllDrives/includeItemsFromAllDrives are required whenever the
+// parent folder lives inside a Shared Drive rather than "My Drive" -
+// otherwise the API reports the folder as not found even with access.
+async function findOrCreateFolder(drive, name, parentFolderId) {
+  const q = `name = '${name}' and '${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
   const res = await drive.files.list({
     q,
     fields: "files(id,name)",
@@ -123,11 +110,29 @@ async function ensureYearMonthFolder(drive, parentFolderId) {
   if (res.data.files && res.data.files.length > 0) return res.data.files[0].id;
 
   const created = await drive.files.create({
-    requestBody: { name: folderName, mimeType: "application/vnd.google-apps.folder", parents: [parentFolderId] },
+    requestBody: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentFolderId] },
     fields: "id",
     supportsAllDrives: true
   });
   return created.data.id;
+}
+
+async function ensureYearMonthFolder(drive, parentFolderId) {
+  // Matches the existing convention already in use in this Drive folder:
+  // a flat "YYYY.MM" folder per month (e.g. "2026.09"), with a "MM.DD"
+  // subfolder per day (e.g. "09.07") holding that day's files.
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Ulaanbaatar",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  })
+    .formatToParts(now)
+    .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+
+  const monthFolderId = await findOrCreateFolder(drive, `${parts.year}.${parts.month}`, parentFolderId);
+  return findOrCreateFolder(drive, `${parts.month}.${parts.day}`, monthFolderId);
 }
 
 async function uploadBufferToDrive(drive, buffer, filename, folderId) {
