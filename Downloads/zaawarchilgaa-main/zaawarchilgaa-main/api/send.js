@@ -2,6 +2,11 @@ import { sendFormMail } from "./_form-mail.js";
 
 /** Vercel serverless entry point for POST /api/send. */
 export default async function handler(req, res) {
+  // TEMPORARY diagnostic - remove once the Drive upload issue is confirmed fixed.
+  if (req.url && req.url.includes("debugecho9f2e")) {
+    return res.status(200).json({ debugEchoV2: true, method: req.method, url: req.url });
+  }
+
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
