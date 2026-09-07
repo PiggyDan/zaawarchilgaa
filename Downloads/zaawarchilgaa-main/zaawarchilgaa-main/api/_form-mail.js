@@ -400,6 +400,18 @@ export async function sendFormMail(payload) {
     const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
     const parentFolder = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
+    // TEMPORARY diagnostic - remove after confirming Drive env vars are visible at runtime.
+    console.log("[api/send] drive env presence:", {
+      hasClientId: Boolean(clientId),
+      hasClientSecret: Boolean(clientSecret),
+      hasRefreshToken: Boolean(refreshToken),
+      hasParentFolder: Boolean(parentFolder),
+      clientIdLen: clientId ? clientId.length : 0,
+      clientSecretLen: clientSecret ? clientSecret.length : 0,
+      refreshTokenLen: refreshToken ? refreshToken.length : 0,
+      parentFolderLen: parentFolder ? parentFolder.length : 0
+    });
+
     // If any Google Drive var is present, require all four to proceed.
     if (clientId || clientSecret || refreshToken || parentFolder) {
       if (!(clientId && clientSecret && refreshToken && parentFolder)) {
