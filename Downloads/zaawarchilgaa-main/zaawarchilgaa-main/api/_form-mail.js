@@ -7,6 +7,17 @@
  * Files prefixed with "_" are not routed by Vercel.
  */
 
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// PDFKit's built-in fonts (Helvetica etc.) have no Cyrillic glyphs, so
+// Mongolian text renders as garbage without an embedded Unicode font.
+// Read via fs.readFileSync with a statically-resolvable path (not a path
+// pdfkit resolves internally) so Vercel's build tracing bundles the file.
+const FONT_PATH = path.join(__dirname, "..", "assets", "fonts", "NotoSans-Regular.ttf");
+
 const DEFAULT_RECIPIENTS = ["it@gkllc.mn", "admin@gkllc.mn", "share@gkllc.mn"];
 
 // Resend only delivers to arbitrary addresses from a verified domain.
@@ -38,6 +49,10 @@ async function buildPdfBuffer(form, employees, signature) {
   const doc = new PDFDocument({ size: "A4", margin: 40 });
   const buffers = [];
   doc.on("data", (d) => buffers.push(d));
+
+  // No family-name argument: passing one makes fontkit try (and fail) to
+  // resolve font variations, even on a static (non-variable) TTF.
+  doc.font(fs.readFileSync(FONT_PATH));
 
   doc.fontSize(16).text("Аяллын аюулгүй ажиллагааны зааварчилгаа", { align: "center" });
   doc.moveDown();
