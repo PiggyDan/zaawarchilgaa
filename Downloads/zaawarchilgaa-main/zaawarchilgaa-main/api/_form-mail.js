@@ -44,9 +44,59 @@ function recipients() {
   return configured.length > 0 ? configured : DEFAULT_RECIPIENTS;
 }
 
+const RED = "#dc2626";
+const BORDER = "#000000";
+const LABEL_BG = "#f3f4f6";
+
+// Mirrors the safety instructions shown in the web form itself (App's
+// SafetyBlock content in src/main.jsx), not the older/longer wording from
+// prior printed copies of this document - the web form is the source of
+// truth for what the employee actually agreed to.
+const SAFETY_SECTIONS = [
+  {
+    title: "Хувь хүний аюулгүй байдал",
+    items: [
+      "Аялалд гарахын өмнө өөрийн эд зүйлсээ шалгах.",
+      "Эрүүл мэнд, биеийн байдалдаа анхаарах.",
+      "Шаардлагатай эм, хувийн хэрэгслээ биедээ авч явах.",
+      "Цаг агаар, нөхцөлдөө тохируулан хувцаслах.",
+      "Аяллын турш согтууруулах ундаа, сэтгэцэд нөлөөлөх бодис хэрэглэхгүй байх."
+    ]
+  },
+  {
+    title: "Аяллын аюулгүй байдал",
+    items: [
+      "Тээврийн хэрэгслийн бүрэн бүтэн байдлыг шалгах.",
+      "Суудлын бүсийг тогтмол хэрэглэх.",
+      "Жолоочийн анхаарлыг сарниулахгүй байх.",
+      "Тээврийн хэрэгсэл бүрэн зогссоны дараа буух.",
+      "Аяллын замд зөвшөөрөлгүй бууж үлдэхгүй байх.",
+      "Жолооч хэт ядарсан бол хөдөлгөөнийг зогсоож, ахлах ажилтанд мэдэгдэх."
+    ]
+  },
+  {
+    title: "Хүнсний эрүүл ахуй",
+    items: [
+      "Хүнсний бүтээгдэхүүний чанар, хугацааг шалгах.",
+      "Өөрийн эрүүл мэндэд тохирохгүй хүнс хэрэглэхгүй байх.",
+      "Замд хэрэглэх хүнс, усыг урьдчилан бэлтгэх."
+    ]
+  }
+];
+
+const EMERGENCY_CONTACTS = [
+  "Онцгой байдал: 105",
+  "Цагдаа: 102",
+  "Эмнэлэг: 103",
+  "Байгууллага: 75053443"
+];
+
+const ACKNOWLEDGEMENT_TEXT =
+  "Ажилтан би дээрх шаардлагыг бүрэн уншиж танилцсан, ойлгосон бөгөөд мөрдөхөө зөвшөөрч байна.";
+
 async function buildPdfBuffer(form, employees, signature) {
   const PDFDocument = (await import("pdfkit")).default;
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
+  const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
   const buffers = [];
   doc.on("data", (d) => buffers.push(d));
 
@@ -54,39 +104,160 @@ async function buildPdfBuffer(form, employees, signature) {
   // resolve font variations, even on a static (non-variable) TTF.
   doc.font(fs.readFileSync(FONT_PATH));
 
-  doc.fontSize(16).text("Аяллын аюулгүй ажиллагааны зааварчилгаа", { align: "center" });
-  doc.moveDown();
+  const contentLeft = doc.page.margins.left;
+  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
-  const addRow = (label, value) => {
-    doc.fontSize(11).fillColor("black").text(`${label}: `, { continued: true, width: 150 });
-    doc.fontSize(11).fillColor("black").text(value || "-");
-  };
+  function ensureSpace(height) {
+    const bottom = doc.page.height - doc.page.margins.bottom;
+    if (doc.y + height > bottom) {
+      doc.addPage();
+    }
+  }
 
-  addRow("Компани", form.company);
-  addRow("Харьяалагдах хэлтэс", form.department);
-  addRow("Аялах өдөр", form.travelDate);
-  addRow("Аялах чиглэл", form.direction === "Бусад" ? form.otherDirection : form.direction);
-  addRow("Тээврийн хэрэгсэл", form.transport);
-  addRow("Жолооч", form.driver || "-");
-  addRow("Автомашин", form.vehicle || "-");
+  // Only a regular-weight Cyrillic font is embedded (no bold variant on
+  // hand), so fake bold by drawing the text twice with a hairline offset.
+  function boldText(text, x, y, options) {
+    doc.text(text, x, y, options);
+    doc.text(text, x + 0.4, y, { ...options, lineBreak: false });
+  }
 
-  doc.moveDown();
+  function block({ text, bold = false, size = 10, padding = 6, color = "black", background = null, align = "left" }) {
+    doc.fontSize(size);
+    const innerWidth = contentWidth - padding * 2;
+    const height = doc.heightOfString(text, { width: innerWidth, align }) + padding * 2;
+    ensureSpace(height);
+    const y = doc.y;
+
+    if (background) {
+      doc.rect(contentLeft, y, contentWidth, height).fill(background);
+    }
+    doc.rect(contentLeft, y, contentWidth, height).lineWidth(0.75).stroke(BORDER);
+
+    doc.fillColor(color);
+    const textOptions = { width: innerWidth, align };
+    if (bold) {
+      boldText(text, contentLeft + padding, y + padding, textOptions);
+    } else {
+      doc.text(text, contentLeft + padding, y + padding, textOptions);
+    }
+    doc.fillColor("black");
+    doc.y = y + height;
+  }
+
+  function fieldRow(label, value) {
+    block({ text: label, bold: true, size: 9.5, background: LABEL_BG });
+    block({ text: value || "-", size: 10.5 });
+  }
+
+  function redHeader(text) {
+    doc.moveDown(0.35);
+    block({ text, bold: true, size: 11, color: "white", background: RED });
+  }
+
+  function numberedList(items) {
+    doc.moveDown(0.15);
+    items.forEach((item, i) => {
+      doc.fontSize(10);
+      const text = `${i + 1}. ${item}`;
+      const width = contentWidth - 10;
+      const height = doc.heightOfString(text, { width });
+      ensureSpace(height + 3);
+      doc.fillColor("black").text(text, contentLeft + 8, doc.y, { width });
+      doc.moveDown(0.15);
+    });
+    doc.moveDown(0.25);
+  }
+
+  // ---- Header ----
+  block({
+    text: "АТҮТ БОЛОН ЗАМЫН УНААГААР ЗОРЧИХ ҮЕИЙН\nАЮУЛГҮЙ АЖИЛЛАГААНЫ ЗААВАРЧИЛГАА",
+    bold: true,
+    size: 13,
+    align: "center",
+    padding: 8
+  });
+  block({
+    text: "Хувилбар: 03                                                                    Шинэчилсэн огноо: 2026.09.01",
+    size: 9,
+    align: "center"
+  });
+  doc.moveDown(0.3);
+
+  // ---- Main fields ----
+  fieldRow("Компани", form.company);
+  fieldRow("Харьяалагдах хэлтэс", form.department);
+  fieldRow("Аялах өдөр", form.travelDate);
+  fieldRow("Аялах чиглэл", form.direction === "Бусад" ? form.otherDirection : form.direction);
+  fieldRow("Аялах тээврийн хэрэгсэл", form.transport);
+  fieldRow("Жолоочийн нэр, утасны дугаар", form.driver);
+  fieldRow("Автомашины марк, улсын дугаар", form.vehicle);
+
+  doc.moveDown(0.3);
+
+  // ---- Employees ----
   employees.forEach((employee, idx) => {
-    doc.fontSize(12).fillColor("black").text(`Ажилтан ${idx + 1}`, { underline: true });
-    addRow("Овог нэр", employee.name);
-    addRow("Албан тушаал", employee.position);
-    addRow("Утас", employee.phone);
-    doc.moveDown();
+    block({ text: `Ажилтан ${idx + 1}`, bold: true, size: 10, background: LABEL_BG });
+    fieldRow("Овог нэр", employee.name);
+    fieldRow("Албан тушаал", employee.position);
+    fieldRow("Утасны дугаар", employee.phone);
   });
 
-  if (signature && signature.buffer) {
-    try {
-      doc.addPage();
-      doc.fontSize(12).text("Гарын үсэг:");
-      doc.image(signature.buffer, { fit: [400, 200], align: "left" });
-    } catch (e) {
-      // ignore if embedding fails
+  doc.moveDown(0.3);
+
+  // ---- Signature ----
+  block({ text: "Гарын үсэг", bold: true, size: 10, background: LABEL_BG });
+  {
+    const height = 110;
+    ensureSpace(height);
+    const y = doc.y;
+    doc.rect(contentLeft, y, contentWidth, height).lineWidth(0.75).stroke(BORDER);
+    if (signature && signature.buffer) {
+      try {
+        doc.image(signature.buffer, contentLeft + 10, y + 8, { fit: [200, height - 16] });
+      } catch (e) {
+        // ignore if embedding fails
+      }
     }
+    doc.y = y + height;
+  }
+
+  // ---- Acceptance ----
+  block({
+    text: "Дээрх шаардлагыг бүрэн уншиж танилцсан, ойлгосон бөгөөд мөрдөхөө зөвшөөрч байна.",
+    size: 10,
+    padding: 8
+  });
+
+  // ---- Safety instructions ----
+  SAFETY_SECTIONS.forEach(({ title, items }) => {
+    redHeader(title);
+    numberedList(items);
+  });
+
+  redHeader("Яаралтай үед холбоо барих");
+  numberedList(EMERGENCY_CONTACTS);
+
+  doc.moveDown(0.3);
+  block({ text: ACKNOWLEDGEMENT_TEXT, bold: true, size: 10.5, color: "white", background: RED, padding: 10 });
+
+  // ---- Footer (date + page number) on every page ----
+  const dateStr = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(new Date())
+    .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  const footerDate = `${dateStr.year}.${dateStr.month}.${dateStr.day}`;
+  const pageRange = doc.bufferedPageRange();
+  for (let i = 0; i < pageRange.count; i++) {
+    doc.switchToPage(pageRange.start + i);
+    const bottomY = doc.page.height - doc.page.margins.bottom + 10;
+    // Writing below the bottom margin normally triggers pdfkit's automatic
+    // page break even with an explicit y - zero the margin out first so the
+    // footer draws onto this page instead of silently starting a new one.
+    const originalBottomMargin = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.fontSize(8.5).fillColor("black");
+    doc.text(footerDate, contentLeft, bottomY, { width: contentWidth / 2, align: "left", lineBreak: false });
+    doc.text(`${i + 1}/${pageRange.count}`, contentLeft + contentWidth / 2, bottomY, { width: contentWidth / 2, align: "right", lineBreak: false });
+    doc.page.margins.bottom = originalBottomMargin;
   }
 
   doc.end();
