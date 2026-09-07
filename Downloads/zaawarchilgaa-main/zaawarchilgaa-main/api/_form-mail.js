@@ -369,23 +369,6 @@ async function sendWithResend({ to, subject, html, text, signature }) {
  * Returns a { status, body } pair the HTTP layer can send as-is.
  */
 export async function sendFormMail(payload) {
-  // TEMPORARY diagnostic - remove once font bundling is confirmed on Vercel.
-  if (payload?.__fontCheckToken === "chk-9f2e-font-check") {
-    try {
-      const exists = fs.existsSync(FONT_PATH);
-      const size = exists ? fs.statSync(FONT_PATH).size : 0;
-      const buf = fs.readFileSync(FONT_PATH);
-      const PDFDocument = (await import("pdfkit")).default;
-      const doc = new PDFDocument({ size: "A4", margin: 40 });
-      doc.font(buf);
-      doc.fontSize(16).text("Аяллын аюулгүй ажиллагааны зааварчилгаа Ө Ү");
-      doc.end();
-      return { status: 200, body: { fontCheck: true, exists, size, ok: true } };
-    } catch (err) {
-      return { status: 200, body: { fontCheck: true, error: err.message || String(err) } };
-    }
-  }
-
   const form = payload?.form;
   const employees = Array.isArray(payload?.employees) ? payload.employees : [];
 
