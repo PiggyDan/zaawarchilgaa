@@ -420,6 +420,15 @@ export async function sendFormMail(payload) {
     const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
     const parentFolder = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
+    // TEMPORARY diagnostic field - remove once Drive upload is confirmed
+    // working in production. Booleans only, never actual values.
+    let driveDebug = {
+      hasClientId: Boolean(clientId),
+      hasClientSecret: Boolean(clientSecret),
+      hasRefreshToken: Boolean(refreshToken),
+      hasParentFolder: Boolean(parentFolder)
+    };
+
     // If any Google Drive var is present, require all four to proceed.
     if (clientId || clientSecret || refreshToken || parentFolder) {
       if (!(clientId && clientSecret && refreshToken && parentFolder)) {
@@ -448,14 +457,17 @@ export async function sendFormMail(payload) {
         const namePart = safeNames.length ? safeNames.join("_") : "submission";
         const filename = `Travel_Request_${namePart}_${dateStr}.pdf`;
 
-        await uploadBufferToDrive(drive, pdfBuffer, filename, targetFolderId);
+        const uploadedId = await uploadBufferToDrive(drive, pdfBuffer, filename, targetFolderId);
+        driveDebug = { ...driveDebug, attempted: true, targetFolderId, uploadedId };
       } catch (err) {
         console.error("[api/send] Drive upload failed:", err);
-        return { status: 500, body: { error: `Drive upload failed: ${err.message || String(err)}` } };
+        return { status: 500, body: { error: `Drive upload failed: ${err.message || String(err)}`, driveDebug } };
       }
+    } else {
+      driveDebug = { ...driveDebug, attempted: false, reason: "all four env vars falsy" };
     }
 
-    return { status: 200, body: { ok: true, id, to: message.to } };
+    return { status: 200, body: { ok: true, id, to: message.to, driveDebug } };
   } catch (error) {
     console.error("[api/send] delivery failed:", error);
     return {
