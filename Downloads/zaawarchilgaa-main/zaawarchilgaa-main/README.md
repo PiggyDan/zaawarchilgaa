@@ -82,5 +82,5 @@ Environment variables to enable this feature (OAuth2):
 Notes:
 - The OAuth client and refresh token allow the server to obtain access tokens and upload files without service account keys.
 - Share the parent Drive folder with the Google account that the refresh token belongs to (Editor access), or use the same account that owns the folder.
-- When these variables are set, the server will upload the generated PDF into `Year/MonthName/` (e.g. `2026/September/Travel_Request_...pdf`) using the `Asia/Ulaanbaatar` timezone to determine the year and month.
+- When these variables are set, the server will upload the generated PDF into a flat `YYYY.MM/` folder (e.g. `2026.09/Travel_Request_...pdf`) directly under `GOOGLE_DRIVE_FOLDER_ID`, matching the folder naming already in use there, using the `Asia/Ulaanbaatar` timezone to determine the year and month.
 - If the Drive upload fails the API will return a clear error and a `500` response. Email delivery still occurs, but the client will receive an error response so you can detect upload problems.

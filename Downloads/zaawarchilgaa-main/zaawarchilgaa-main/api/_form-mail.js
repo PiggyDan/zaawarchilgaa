@@ -81,39 +81,25 @@ async function buildPdfBuffer(form, employees, signature) {
 }
 
 async function ensureYearMonthFolder(drive, parentFolderId) {
-  // Determine year and month names using Asia/Ulaanbaatar timezone.
+  // Matches the existing convention already in use in this Drive folder:
+  // a single flat "YYYY.MM" folder per month (e.g. "2026.09"), not a
+  // nested Year/MonthName structure.
   const now = new Date();
-  const year = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric" }).format(now);
-  const monthName = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", month: "long" }).format(now);
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Ulaanbaatar",
+    year: "numeric",
+    month: "2-digit"
+  })
+    .formatToParts(now)
+    .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  const folderName = `${parts.year}.${parts.month}`;
 
-  // Find or create year folder under parent.
   // supportsAllDrives/includeItemsFromAllDrives are required whenever the
   // parent folder lives inside a Shared Drive rather than "My Drive" -
   // otherwise the API reports the folder as not found even with access.
-  const qYear = `name = '${year}' and '${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-  let res = await drive.files.list({
-    q: qYear,
-    fields: "files(id,name)",
-    spaces: "drive",
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true
-  });
-  let yearFolderId;
-  if (res.data.files && res.data.files.length > 0) {
-    yearFolderId = res.data.files[0].id;
-  } else {
-    const createdYear = await drive.files.create({
-      requestBody: { name: year, mimeType: "application/vnd.google-apps.folder", parents: [parentFolderId] },
-      fields: "id",
-      supportsAllDrives: true
-    });
-    yearFolderId = createdYear.data.id;
-  }
-
-  // Find or create month folder under year folder
-  const qMonth = `name = '${monthName}' and '${yearFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-  res = await drive.files.list({
-    q: qMonth,
+  const q = `name = '${folderName}' and '${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+  const res = await drive.files.list({
+    q,
     fields: "files(id,name)",
     spaces: "drive",
     supportsAllDrives: true,
@@ -121,12 +107,12 @@ async function ensureYearMonthFolder(drive, parentFolderId) {
   });
   if (res.data.files && res.data.files.length > 0) return res.data.files[0].id;
 
-  const createdMonth = await drive.files.create({
-    requestBody: { name: monthName, mimeType: "application/vnd.google-apps.folder", parents: [yearFolderId] },
+  const created = await drive.files.create({
+    requestBody: { name: folderName, mimeType: "application/vnd.google-apps.folder", parents: [parentFolderId] },
     fields: "id",
     supportsAllDrives: true
   });
-  return createdMonth.data.id;
+  return created.data.id;
 }
 
 async function uploadBufferToDrive(drive, buffer, filename, folderId) {
