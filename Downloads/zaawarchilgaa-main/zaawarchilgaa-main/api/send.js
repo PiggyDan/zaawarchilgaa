@@ -17,6 +17,17 @@ export default async function handler(req, res) {
     }
   }
 
+  // TEMPORARY diagnostic - remove once the Drive upload issue is confirmed fixed.
+  if (req.headers["x-debug-echo"] === "chk-9f2e-drive-debug") {
+    return res.status(200).json({
+      debugEcho: true,
+      payloadType: typeof payload,
+      payloadIsNull: payload === null,
+      payloadKeys: payload && typeof payload === "object" ? Object.keys(payload) : null,
+      payload
+    });
+  }
+
   const { status, body } = await sendFormMail(payload);
 
   return res.status(status).json(body);
