@@ -108,14 +108,23 @@ function App() {
     direction: "",
     otherDirection: "",
     transport: "Байгууллагын унаагаар",
-    driver: "",
-    vehicle: ""
+    driverName: "",
+    driverPhone: "",
+    vehicleModel: "",
+    vehiclePlate: ""
   });
 
   const selectedCompany = companyMap[form.company] || companyOptions[0];
+  const needsVehicleDetails = form.transport !== "АТҮТ / Нийтийн тээвэр";
 
-  const updateForm = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const updateForm = (e) => {
+    const { name, value } = e.target;
+    let nextValue = value;
+    if (name === "driverName") nextValue = value.replace(/[^\p{L}\p{M} ]/gu, "");
+    if (name === "driverPhone") nextValue = value.replace(/[^0-9]/g, "");
+    if (name === "vehiclePlate") nextValue = value.toUpperCase();
+    setForm((previous) => ({ ...previous, [name]: nextValue }));
+  };
 
   const updateEmployee = (index, key, value) => {
     const next = [...employees];
@@ -140,6 +149,13 @@ function App() {
     if (sending) return;
 
     const missing = [];
+
+    if (needsVehicleDetails) {
+      if (!form.driverName.trim()) missing.push("Жолоочийн нэр");
+      if (!form.driverPhone.trim()) missing.push("Жолоочийн утасны дугаар");
+      if (!form.vehicleModel.trim()) missing.push("Автомашины марк");
+      if (!form.vehiclePlate.trim()) missing.push("Автомашины улсын дугаар");
+    }
 
     if (!form.department.trim()) missing.push("Харьяалагдах хэлтэс");
     if (!form.travelDate) missing.push("Аялах өдөр");
@@ -170,7 +186,15 @@ function App() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          form,
+          form: {
+            ...form,
+            driverName: needsVehicleDetails ? form.driverName.trim() : "",
+            driverPhone: needsVehicleDetails ? form.driverPhone : "",
+            vehicleModel: needsVehicleDetails ? form.vehicleModel.trim() : "",
+            vehiclePlate: needsVehicleDetails ? form.vehiclePlate.trim() : "",
+            driver: needsVehicleDetails ? [form.driverName.trim(), form.driverPhone].filter(Boolean).join(" ") : "",
+            vehicle: needsVehicleDetails ? [form.vehicleModel.trim(), form.vehiclePlate.trim()].filter(Boolean).join(", ") : ""
+          },
           employees,
           signature
         })
@@ -193,8 +217,10 @@ function App() {
         direction: "",
         otherDirection: "",
         transport: "Байгууллагын унаагаар",
-        driver: "",
-        vehicle: ""
+        driverName: "",
+        driverPhone: "",
+        vehicleModel: "",
+        vehiclePlate: ""
       });
       setShowSafety(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -305,6 +331,7 @@ function App() {
                   <option>Улаанбаатар - Гурвантэс</option>
                   <option>Даланзадгад - Гурвантэс</option>
                   <option>Даланзадгад - Улаанбаатар</option>
+                  <option>Цагаанхад - Улаанбаатар</option>
                   <option>Шивээхүрэн - Улаанбаатар</option>
                   <option>Гурвантэс - Улаанбаатар</option>
                   <option>Бусад</option>
@@ -339,23 +366,59 @@ function App() {
               </select>
             </Field>
 
-            <Field label="Жолоочийн нэр, утасны дугаар">
+            {needsVehicleDetails && (
+              <>
+            <div className="twoCols">
+            <Field label="Жолоочийн нэр *">
               <input
-                name="driver"
-                value={form.driver}
+                required
+                name="driverName"
+                value={form.driverName}
                 onChange={updateForm}
-                placeholder="Жишээ: Бат 88000000"
+                pattern={".*\\p{L}.*"}
+                title="Нэрээ үсгээр оруулна уу."
+                placeholder="Жишээ: Бат"
               />
             </Field>
+            <Field label="Жолоочийн утасны дугаар *">
+              <input
+                required
+                type="tel"
+                inputMode="numeric"
+                name="driverPhone"
+                value={form.driverPhone}
+                onChange={updateForm}
+                pattern="[0-9]+"
+                title="Утасны дугаараа зөвхөн тоогоор оруулна уу."
+                placeholder="Жишээ: 88000000"
+              />
+            </Field>
+            </div>
 
-            <Field label="Автомашины марк, улсын дугаар">
+            <div className="twoCols">
+            <Field label="Автомашины марк *">
               <input
-                name="vehicle"
-                value={form.vehicle}
+                required
+                name="vehicleModel"
+                value={form.vehicleModel}
                 onChange={updateForm}
-                placeholder="Жишээ: Toyota Land Cruiser 200, 00-00 УБА"
+                placeholder="Жишээ: Toyota Land Cruiser 200"
               />
             </Field>
+            <Field label="Автомашины улсын дугаар *">
+              <input
+                required
+                name="vehiclePlate"
+                value={form.vehiclePlate}
+                onChange={updateForm}
+                pattern={"[0-9]{2}\\-?[0-9]{2} *[A-ZА-ЯӨҮЁ]{3}"}
+                title="4 тоо, 3 үсэг оруулна уу. Жишээ: 1234 УБА эсвэл 12-34 УБА"
+                placeholder="Жишээ: 1234 УБА"
+              />
+            </Field>
+            </div>
+              </>
+            )}
           </Section>
 
           <Section title={`Зорчих ажилтан (${employees.length})`}>
