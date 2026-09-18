@@ -46,3 +46,9 @@ Set the same variables in the Vercel project settings for production;
 - `api/_form-mail.js` — validation, email template, delivery
 - `api/send.js` — Vercel serverless entry point
 - `vite.config.js` — serves the same handler locally during `npm run dev`
+
+## Google Drive archive
+
+The root app requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, and GOOGLE_DRIVE_FOLDER_ID on the server. After email delivery, it saves a PDF under YYYY.MM/MM.DD using the travel date. Successful API responses include driveFileId. Upload failures return an error; missing settings are rejected before sending email.
+
+The PDF uses assets/fonts/NotoSans-Regular.ttf for Mongolian text. Configure the same variables in .env.local for development. Run npm run get:google-token with Google client variables set to generate a refresh token.

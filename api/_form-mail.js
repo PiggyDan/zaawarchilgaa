@@ -7,6 +7,17 @@
  * Files prefixed with "_" are not routed by Vercel.
  */
 
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// PDFKit's built-in fonts (Helvetica etc.) have no Cyrillic glyphs, so
+// Mongolian text renders as garbage without an embedded Unicode font.
+// Read via fs.readFileSync with a statically-resolvable path (not a path
+// pdfkit resolves internally) so Vercel's build tracing bundles the file.
+const FONT_PATH = path.join(__dirname, "..", "assets", "fonts", "NotoSans-Regular.ttf");
+
 const DEFAULT_RECIPIENTS = ["it@gkllc.mn", "admin@gkllc.mn", "share@gkllc.mn"];
 
 // Resend only delivers to arbitrary addresses from a verified domain.
@@ -31,6 +42,292 @@ function recipients() {
     .filter(Boolean);
 
   return configured.length > 0 ? configured : DEFAULT_RECIPIENTS;
+}
+
+const RED = "#dc2626";
+const BORDER = "#000000";
+const LABEL_BG = "#f3f4f6";
+
+// Mirrors the safety instructions shown in the web form itself (App's
+// SafetyBlock content in src/main.jsx), not the older/longer wording from
+// prior printed copies of this document - the web form is the source of
+// truth for what the employee actually agreed to.
+const SAFETY_SECTIONS = [
+  {
+    title: "Хувь хүний аюулгүй байдал",
+    items: [
+      "Аялалд гарахын өмнө өөрийн эд зүйлсээ шалгах.",
+      "Эрүүл мэнд, биеийн байдалдаа анхаарах.",
+      "Шаардлагатай эм, хувийн хэрэгслээ биедээ авч явах.",
+      "Цаг агаар, нөхцөлдөө тохируулан хувцаслах.",
+      "Аяллын турш согтууруулах ундаа, сэтгэцэд нөлөөлөх бодис хэрэглэхгүй байх."
+    ]
+  },
+  {
+    title: "Аяллын аюулгүй байдал",
+    items: [
+      "Тээврийн хэрэгслийн бүрэн бүтэн байдлыг шалгах.",
+      "Суудлын бүсийг тогтмол хэрэглэх.",
+      "Жолоочийн анхаарлыг сарниулахгүй байх.",
+      "Тээврийн хэрэгсэл бүрэн зогссоны дараа буух.",
+      "Аяллын замд зөвшөөрөлгүй бууж үлдэхгүй байх.",
+      "Жолооч хэт ядарсан бол хөдөлгөөнийг зогсоож, ахлах ажилтанд мэдэгдэх."
+    ]
+  },
+  {
+    title: "Хүнсний эрүүл ахуй",
+    items: [
+      "Хүнсний бүтээгдэхүүний чанар, хугацааг шалгах.",
+      "Өөрийн эрүүл мэндэд тохирохгүй хүнс хэрэглэхгүй байх.",
+      "Замд хэрэглэх хүнс, усыг урьдчилан бэлтгэх."
+    ]
+  }
+];
+
+const EMERGENCY_CONTACTS = [
+  "Онцгой байдал: 105",
+  "Цагдаа: 102",
+  "Эмнэлэг: 103",
+  "Байгууллага: 75053443"
+];
+
+const ACKNOWLEDGEMENT_TEXT =
+  "Ажилтан би дээрх шаардлагыг бүрэн уншиж танилцсан, ойлгосон бөгөөд мөрдөхөө зөвшөөрч байна.";
+
+async function buildPdfBuffer(form, employees, signature) {
+  const PDFDocument = (await import("pdfkit")).default;
+  const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+  const buffers = [];
+  doc.on("data", (d) => buffers.push(d));
+
+  // No family-name argument: passing one makes fontkit try (and fail) to
+  // resolve font variations, even on a static (non-variable) TTF.
+  doc.font(fs.readFileSync(FONT_PATH));
+
+  const contentLeft = doc.page.margins.left;
+  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+  function ensureSpace(height) {
+    const bottom = doc.page.height - doc.page.margins.bottom;
+    if (doc.y + height > bottom) {
+      doc.addPage();
+    }
+  }
+
+  // Only a regular-weight Cyrillic font is embedded (no bold variant on
+  // hand), so fake bold by drawing the text twice with a hairline offset.
+  function boldText(text, x, y, options) {
+    doc.text(text, x, y, options);
+    doc.text(text, x + 0.4, y, { ...options, lineBreak: false });
+  }
+
+  function block({ text, bold = false, size = 10, padding = 6, color = "black", background = null, align = "left" }) {
+    doc.fontSize(size);
+    const innerWidth = contentWidth - padding * 2;
+    const height = doc.heightOfString(text, { width: innerWidth, align }) + padding * 2;
+    ensureSpace(height);
+    const y = doc.y;
+
+    if (background) {
+      doc.rect(contentLeft, y, contentWidth, height).fill(background);
+    }
+    doc.rect(contentLeft, y, contentWidth, height).lineWidth(0.75).stroke(BORDER);
+
+    doc.fillColor(color);
+    const textOptions = { width: innerWidth, align };
+    if (bold) {
+      boldText(text, contentLeft + padding, y + padding, textOptions);
+    } else {
+      doc.text(text, contentLeft + padding, y + padding, textOptions);
+    }
+    doc.fillColor("black");
+    doc.y = y + height;
+  }
+
+  function fieldRow(label, value) {
+    block({ text: label, bold: true, size: 9.5, background: LABEL_BG });
+    block({ text: value || "-", size: 10.5 });
+  }
+
+  function redHeader(text) {
+    doc.moveDown(0.35);
+    block({ text, bold: true, size: 11, color: "white", background: RED });
+  }
+
+  function numberedList(items) {
+    doc.moveDown(0.15);
+    items.forEach((item, i) => {
+      doc.fontSize(10);
+      const text = `${i + 1}. ${item}`;
+      const width = contentWidth - 10;
+      const height = doc.heightOfString(text, { width });
+      ensureSpace(height + 3);
+      doc.fillColor("black").text(text, contentLeft + 8, doc.y, { width });
+      doc.moveDown(0.15);
+    });
+    doc.moveDown(0.25);
+  }
+
+  // ---- Header ----
+  block({
+    text: "АТҮТ БОЛОН ЗАМЫН УНААГААР ЗОРЧИХ ҮЕИЙН\nАЮУЛГҮЙ АЖИЛЛАГААНЫ ЗААВАРЧИЛГАА",
+    bold: true,
+    size: 13,
+    align: "center",
+    padding: 8
+  });
+  block({
+    text: "Хувилбар: 03                                                                    Шинэчилсэн огноо: 2026.09.01",
+    size: 9,
+    align: "center"
+  });
+  doc.moveDown(0.3);
+
+  // ---- Main fields ----
+  fieldRow("Компани", form.company);
+  fieldRow("Харьяалагдах хэлтэс", form.department);
+  fieldRow("Аялах өдөр", form.travelDate);
+  fieldRow("Аялах чиглэл", form.direction === "Бусад" ? form.otherDirection : form.direction);
+  fieldRow("Аялах тээврийн хэрэгсэл", form.transport);
+  fieldRow("Жолоочийн нэр, утасны дугаар", form.driver);
+  fieldRow("Автомашины марк, улсын дугаар", form.vehicle);
+
+  doc.moveDown(0.3);
+
+  // ---- Employees ----
+  employees.forEach((employee, idx) => {
+    block({ text: `Ажилтан ${idx + 1}`, bold: true, size: 10, background: LABEL_BG });
+    fieldRow("Овог нэр", employee.name);
+    fieldRow("Албан тушаал", employee.position);
+    fieldRow("Утасны дугаар", employee.phone);
+  });
+
+  doc.moveDown(0.3);
+
+  // ---- Signature ----
+  block({ text: "Гарын үсэг", bold: true, size: 10, background: LABEL_BG });
+  {
+    const height = 110;
+    ensureSpace(height);
+    const y = doc.y;
+    doc.rect(contentLeft, y, contentWidth, height).lineWidth(0.75).stroke(BORDER);
+    if (signature && signature.buffer) {
+      try {
+        doc.image(signature.buffer, contentLeft + 10, y + 8, { fit: [200, height - 16] });
+      } catch (e) {
+        // ignore if embedding fails
+      }
+    }
+    doc.y = y + height;
+  }
+
+  // ---- Acceptance ----
+  block({
+    text: "Дээрх шаардлагыг бүрэн уншиж танилцсан, ойлгосон бөгөөд мөрдөхөө зөвшөөрч байна.",
+    size: 10,
+    padding: 8
+  });
+
+  // ---- Safety instructions ----
+  SAFETY_SECTIONS.forEach(({ title, items }) => {
+    redHeader(title);
+    numberedList(items);
+  });
+
+  redHeader("Яаралтай үед холбоо барих");
+  numberedList(EMERGENCY_CONTACTS);
+
+  doc.moveDown(0.3);
+  block({ text: ACKNOWLEDGEMENT_TEXT, bold: true, size: 10.5, color: "white", background: RED, padding: 10 });
+
+  // ---- Footer (date + page number) on every page ----
+  const dateStr = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(new Date())
+    .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  const footerDate = `${dateStr.year}.${dateStr.month}.${dateStr.day}`;
+  const pageRange = doc.bufferedPageRange();
+  for (let i = 0; i < pageRange.count; i++) {
+    doc.switchToPage(pageRange.start + i);
+    const bottomY = doc.page.height - doc.page.margins.bottom + 10;
+    // Writing below the bottom margin normally triggers pdfkit's automatic
+    // page break even with an explicit y - zero the margin out first so the
+    // footer draws onto this page instead of silently starting a new one.
+    const originalBottomMargin = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.fontSize(8.5).fillColor("black");
+    doc.text(footerDate, contentLeft, bottomY, { width: contentWidth / 2, align: "left", lineBreak: false });
+    doc.text(`${i + 1}/${pageRange.count}`, contentLeft + contentWidth / 2, bottomY, { width: contentWidth / 2, align: "right", lineBreak: false });
+    doc.page.margins.bottom = originalBottomMargin;
+  }
+
+  doc.end();
+
+  await new Promise((res) => doc.on("end", res));
+  return Buffer.concat(buffers);
+}
+
+// supportsAllDrives/includeItemsFromAllDrives are required whenever the
+// parent folder lives inside a Shared Drive rather than "My Drive" -
+// otherwise the API reports the folder as not found even with access.
+async function findOrCreateFolder(drive, name, parentFolderId) {
+  const q = `name = '${name}' and '${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+  const res = await drive.files.list({
+    q,
+    fields: "files(id,name)",
+    spaces: "drive",
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
+  });
+  if (res.data.files && res.data.files.length > 0) return res.data.files[0].id;
+
+  const created = await drive.files.create({
+    requestBody: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentFolderId] },
+    fields: "id",
+    supportsAllDrives: true
+  });
+  return created.data.id;
+}
+
+async function ensureYearMonthFolder(drive, parentFolderId, travelDate) {
+  // Matches the existing convention already in use in this Drive folder:
+  // a flat "YYYY.MM" folder per month (e.g. "2026.09"), with a "MM.DD"
+  // subfolder per day (e.g. "09.08") holding that day's files.
+  // Filed under the form's travel date (Аялах өдөр), not the submission date,
+  // since a form is often submitted ahead of the actual travel day.
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(travelDate || "");
+  let year, month, day;
+  if (match) {
+    [, year, month, day] = match;
+  } else {
+    // Fall back to today (Asia/Ulaanbaatar) if travelDate is missing/malformed.
+    const parts = new Intl.DateTimeFormat("en", {
+      timeZone: "Asia/Ulaanbaatar",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    })
+      .formatToParts(new Date())
+      .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+    ({ year, month, day } = parts);
+  }
+
+  const monthFolderId = await findOrCreateFolder(drive, `${year}.${month}`, parentFolderId);
+  return findOrCreateFolder(drive, `${month}.${day}`, monthFolderId);
+}
+
+async function uploadBufferToDrive(drive, buffer, filename, folderId) {
+  const { PassThrough } = await import("stream");
+  const stream = new PassThrough();
+  stream.end(buffer);
+
+  const res = await drive.files.create({
+    requestBody: { name: filename, parents: [folderId], mimeType: "application/pdf" },
+    media: { mimeType: "application/pdf", body: stream },
+    fields: "id",
+    supportsAllDrives: true
+  });
+
+  return res.data.id;
 }
 
 /** Turns a data URL from the browser into an email attachment. */
@@ -287,6 +584,17 @@ export async function sendFormMail(payload) {
     };
   }
 
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  const parentFolder = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  if (!(clientId && clientSecret && refreshToken && parentFolder)) {
+    return {
+      status: 500,
+      body: { error: "Drive upload misconfigured (set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN and GOOGLE_DRIVE_FOLDER_ID)." }
+    };
+  }
+
   const message = {
     to: recipients(),
     subject: buildSubject(form, employees),
@@ -297,7 +605,34 @@ export async function sendFormMail(payload) {
 
   try {
     const id = useSmtp ? await sendWithSmtp(message) : await sendWithResend(message);
-    return { status: 200, body: { ok: true, id, to: message.to } };
+    let driveFileId;
+    {
+      try {
+        const pdfBuffer = await buildPdfBuffer(form, employees, signature);
+
+        const { google } = await import("googleapis");
+        const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+        oauth2Client.setCredentials({ refresh_token: refreshToken });
+        const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+        const targetFolderId = await ensureYearMonthFolder(drive, parentFolder, form.travelDate);
+
+        const now = new Date();
+        const dtf = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+        const parts = dtf.formatToParts(now).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+        const dateStr = `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}`;
+        const safeNames = employees.map((e) => (e.name || "").replace(/[^a-zA-Z0-9\u0080-\uFFFF_-]+/g, "_")).filter(Boolean);
+        const namePart = safeNames.length ? safeNames.join("_") : "submission";
+        const filename = `Travel_Request_${namePart}_${dateStr}.pdf`;
+
+        driveFileId = await uploadBufferToDrive(drive, pdfBuffer, filename, targetFolderId);
+      } catch (err) {
+        console.error("[api/send] Drive upload failed:", err);
+        return { status: 500, body: { error: `Drive upload failed: ${err.message || String(err)}` } };
+      }
+    }
+
+    return { status: 200, body: { ok: true, id, to: message.to, driveFileId } };
   } catch (error) {
     console.error("[api/send] delivery failed:", error);
     return {
