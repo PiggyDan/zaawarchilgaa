@@ -474,7 +474,17 @@ function buildSubject(form, employees) {
   return `Аяллын зааварчилгаа | ${form.travelDate} | ${direction} | ${names}`;
 }
 
-async function sendWithSmtp({ to, subject, html, text, signature }) {
+/** Names the PDF after the travellers and the submission time in Mongolia. */
+function buildPdfFilename(employees) {
+  const dtf = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  const parts = dtf.formatToParts(new Date()).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  const dateStr = `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}`;
+  const safeNames = employees.map((e) => (e.name || "").replace(/[^a-zA-Z0-9\u0080-\uFFFF_-]+/g, "_")).filter(Boolean);
+  const namePart = safeNames.length ? safeNames.join("_") : "submission";
+  return `Travel_Request_${namePart}_${dateStr}.pdf`;
+}
+
+async function sendWithSmtp({ to, subject, html, text, signature, pdf }) {
   const nodemailer = (await import("nodemailer")).default;
 
   const port = Number(process.env.SMTP_PORT || 587);
@@ -509,6 +519,11 @@ async function sendWithSmtp({ to, subject, html, text, signature }) {
         content: signature.buffer,
         contentType: signature.contentType,
         cid: SIGNATURE_CID
+      },
+      {
+        filename: pdf.filename,
+        content: pdf.buffer,
+        contentType: "application/pdf"
       }
     ]
   });
@@ -516,7 +531,7 @@ async function sendWithSmtp({ to, subject, html, text, signature }) {
   return info.messageId;
 }
 
-async function sendWithResend({ to, subject, html, text, signature }) {
+async function sendWithResend({ to, subject, html, text, signature, pdf }) {
   const { Resend } = await import("resend");
   const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -532,6 +547,11 @@ async function sendWithResend({ to, subject, html, text, signature }) {
         content: signature.base64,
         contentType: signature.contentType,
         contentId: SIGNATURE_CID
+      },
+      {
+        filename: pdf.filename,
+        content: pdf.buffer.toString("base64"),
+        contentType: "application/pdf"
       }
     ]
   });
@@ -595,41 +615,41 @@ export async function sendFormMail(payload) {
     };
   }
 
+  let pdf;
+  try {
+    pdf = {
+      buffer: await buildPdfBuffer(form, employees, signature),
+      filename: buildPdfFilename(employees)
+    };
+  } catch (err) {
+    console.error("[api/send] PDF generation failed:", err);
+    return { status: 500, body: { error: "PDF үүсгэхэд алдаа гарлаа." } };
+  }
+
   const message = {
     to: recipients(),
     subject: buildSubject(form, employees),
     html: buildHtml(form, employees, true),
     text: buildText(form, employees),
-    signature
+    signature,
+    pdf
   };
 
   try {
     const id = useSmtp ? await sendWithSmtp(message) : await sendWithResend(message);
     let driveFileId;
-    {
-      try {
-        const pdfBuffer = await buildPdfBuffer(form, employees, signature);
+    try {
+      const { google } = await import("googleapis");
+      const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+      oauth2Client.setCredentials({ refresh_token: refreshToken });
+      const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-        const { google } = await import("googleapis");
-        const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-        oauth2Client.setCredentials({ refresh_token: refreshToken });
-        const drive = google.drive({ version: "v3", auth: oauth2Client });
+      const targetFolderId = await ensureYearMonthFolder(drive, parentFolder, form.travelDate);
 
-        const targetFolderId = await ensureYearMonthFolder(drive, parentFolder, form.travelDate);
-
-        const now = new Date();
-        const dtf = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
-        const parts = dtf.formatToParts(now).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
-        const dateStr = `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}`;
-        const safeNames = employees.map((e) => (e.name || "").replace(/[^a-zA-Z0-9\u0080-\uFFFF_-]+/g, "_")).filter(Boolean);
-        const namePart = safeNames.length ? safeNames.join("_") : "submission";
-        const filename = `Travel_Request_${namePart}_${dateStr}.pdf`;
-
-        driveFileId = await uploadBufferToDrive(drive, pdfBuffer, filename, targetFolderId);
-      } catch (err) {
-        console.error("[api/send] Drive upload failed:", err);
-        return { status: 500, body: { error: `Drive upload failed: ${err.message || String(err)}` } };
-      }
+      driveFileId = await uploadBufferToDrive(drive, pdf.buffer, pdf.filename, targetFolderId);
+    } catch (err) {
+      console.error("[api/send] Drive upload failed:", err);
+      return { status: 500, body: { error: `Drive upload failed: ${err.message || String(err)}` } };
     }
 
     return { status: 200, body: { ok: true, id, to: message.to, driveFileId } };
