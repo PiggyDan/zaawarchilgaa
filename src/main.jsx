@@ -760,6 +760,10 @@ function App() {
   );
 }
 
+function Footer() {
+  return <footer className="siteFooter">Powered by Daniel Knight</footer>;
+}
+
 function AppBar({ company, progress }) {
   return (
     <header className="appBar">

@@ -898,6 +898,12 @@ select:focus {
   box-shadow: var(--shadow);
 }
 
+.siteFooter {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
 .actionStatus {
   display: grid;
   min-width: 0;
