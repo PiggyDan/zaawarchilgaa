@@ -6,7 +6,7 @@ company recipients with the uploaded signature embedded in the message.
 ## Run
 ```bash
 npm install
-cp .env.local.example .env.local   # then fill in credentials
+# create .env.local with the variables listed below (never commit it)
 npm run dev
 ```
 
