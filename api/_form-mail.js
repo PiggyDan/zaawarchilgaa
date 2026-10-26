@@ -12,6 +12,20 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { getRouteWeather } from "./_route-weather.js";
 import { buildWeatherHtml, buildWeatherText } from "./_weather-email.js";
+import {
+  ADVICE_TITLE,
+  ATTRIBUTION,
+  LEVEL_SUMMARY,
+  NOT_OFFICIAL,
+  PARTIAL_COVERAGE,
+  WEATHER_DISCLAIMER,
+  WEATHER_TITLE,
+  hasWarnings,
+  routeLabel,
+  stopLines,
+  stopTitle,
+  timeLabel
+} from "../shared/weather-format.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PDFKit's built-in fonts (Helvetica etc.) have no Cyrillic glyphs, so
@@ -96,7 +110,14 @@ const EMERGENCY_CONTACTS = [
 const ACKNOWLEDGEMENT_TEXT =
   "Ажилтан би дээрх шаардлагыг бүрэн уншиж танилцсан, ойлгосон бөгөөд мөрдөхөө зөвшөөрч байна.";
 
-async function buildPdfBuffer(form, employees, signature) {
+// Light background and text color for the weather risk levels in the PDF.
+const PDF_LEVEL_COLORS = {
+  serious: { text: "#b91c1c", background: "#fef2f2" },
+  moderate: { text: "#c2410c", background: "#fff7ed" },
+  normal: { text: "#15803d", background: "#f0fdf4" }
+};
+
+export async function buildPdfBuffer(form, employees, signature, weather = null) {
   const PDFDocument = (await import("pdfkit")).default;
   const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
   const buffers = [];
@@ -241,6 +262,64 @@ async function buildPdfBuffer(form, employees, signature) {
 
   doc.moveDown(0.3);
   block({ text: ACKNOWLEDGEMENT_TEXT, bold: true, size: 10.5, color: "white", background: RED, padding: 10 });
+
+  // ---- Route weather (same snapshot and wording as the email) ----
+  if (weather && weather.status !== "disabled") {
+    // The embedded font has no "→" glyph.
+    const route = routeLabel(weather).replace(/ → /g, " – ");
+
+    doc.moveDown(0.6);
+    block({ text: WEATHER_TITLE, bold: true, size: 11, color: "white", background: "#1e3a8a" });
+    fieldRow("Маршрут", route);
+    fieldRow("Хугацаа", timeLabel(weather));
+
+    if (weather.status === "unavailable") {
+      block({ text: weather.message, size: 10 });
+    } else {
+      const level = PDF_LEVEL_COLORS[weather.level];
+      block({ text: LEVEL_SUMMARY[weather.level], bold: true, size: 10, color: level.text, background: level.background });
+
+      if (weather.advice.length > 0) {
+        block({ text: ADVICE_TITLE, bold: true, size: 9.5, background: LABEL_BG });
+        numberedList(weather.advice);
+      }
+
+      weather.stops.forEach((stop) => {
+        // Keep a stop's title and figures on the same page.
+        ensureSpace(90);
+        block({ text: stopTitle(stop), bold: true, size: 10, background: LABEL_BG });
+        block({ text: stopLines(stop).map(([label, value]) => `${label}: ${value}`).join("\n"), size: 10 });
+
+        if (stop.ok && stop.warnings.length > 0) {
+          const serious = stop.warnings.some((w) => w.level === "serious");
+          const colors = PDF_LEVEL_COLORS[serious ? "serious" : "moderate"];
+          block({
+            text: stop.warnings.map((w) => `Анхааруулга: ${w.text}`).join("\n"),
+            bold: true,
+            size: 10,
+            color: colors.text,
+            background: colors.background
+          });
+        }
+      });
+    }
+
+    const notes = [
+      weather.coverage === "partial" ? PARTIAL_COVERAGE : null,
+      hasWarnings(weather) ? NOT_OFFICIAL : null,
+      WEATHER_DISCLAIMER,
+      ATTRIBUTION
+    ].filter(Boolean);
+
+    doc.moveDown(0.4);
+    notes.forEach((text) => {
+      doc.fontSize(8.5);
+      ensureSpace(doc.heightOfString(text, { width: contentWidth }) + 4);
+      doc.fillColor("#374151").text(text, contentLeft, doc.y, { width: contentWidth });
+      doc.moveDown(0.2);
+    });
+    doc.fillColor("black");
+  }
 
   // ---- Footer (date + page number) on every page ----
   const dateStr = new Intl.DateTimeFormat("en", { timeZone: "Asia/Ulaanbaatar", year: "numeric", month: "2-digit", day: "2-digit" })
@@ -621,22 +700,21 @@ export async function sendFormMail(payload) {
     };
   }
 
-  // Fetched alongside PDF generation. getRouteWeather never rejects, and an
-  // unavailable forecast only changes the email's weather section.
-  const weatherPromise = getRouteWeather(form).catch(() => null);
+  // Fetched before the PDF, which includes it. getRouteWeather never rejects
+  // and is time-bounded; an unavailable forecast only changes the weather
+  // section's text in the email and PDF.
+  const weather = await getRouteWeather(form).catch(() => null);
 
   let pdf;
   try {
     pdf = {
-      buffer: await buildPdfBuffer(form, employees, signature),
+      buffer: await buildPdfBuffer(form, employees, signature, weather),
       filename: buildPdfFilename(employees)
     };
   } catch (err) {
     console.error("[api/send] PDF generation failed:", err);
     return { status: 500, body: { error: "PDF үүсгэхэд алдаа гарлаа." } };
   }
-
-  const weather = await weatherPromise;
 
   const message = {
     to: recipients(),

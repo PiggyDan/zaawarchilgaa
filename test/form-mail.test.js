@@ -161,3 +161,27 @@ test("user-entered direction text is HTML-escaped in the weather section", async
   assert.doesNotMatch(sent[0].html, /<b>Ховд<\/b>/);
   assert.match(sent[0].html, /&lt;b&gt;Ховд&lt;\/b&gt;/);
 });
+
+test("the PDF attachment includes the weather section when weather is available", async () => {
+  const { buildPdfBuffer } = await import("../api/_form-mail.js");
+  const data = payload("Улаанбаатар - Цагаанхад");
+  const signature = { buffer: Buffer.from(SIGNATURE.split(",")[1], "base64") };
+
+  serveForecast();
+  const { getRouteWeather } = await import("../api/_route-weather.js");
+  const weather = await getRouteWeather(data.form);
+  assert.equal(weather.status, "ok");
+
+  const without = await buildPdfBuffer(data.form, data.employees, signature, null);
+  const withWeather = await buildPdfBuffer(data.form, data.employees, signature, weather);
+  const unavailable = await buildPdfBuffer(data.form, data.employees, signature, { ...weather, status: "unavailable", message: "x", stops: [] });
+
+  const pages = (pdf) => (pdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length;
+  assert.ok(pages(withWeather) > pages(without), "weather adds content to the PDF");
+  assert.ok(unavailable.length > without.length, "an unavailable note is still printed");
+
+  // The email's attachment is built with the same weather.
+  await sendFormMail(data);
+  const attached = sent[0].attachments.find((a) => a.contentType === "application/pdf");
+  assert.ok(pages(attached.content) > pages(without));
+});
