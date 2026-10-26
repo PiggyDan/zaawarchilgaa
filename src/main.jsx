@@ -22,6 +22,7 @@ import {
 import govikhangaiLogo from "./assets/logos/GKK.png";
 import tsagaanhadLogo from "./assets/logos/tsagaanhad.png";
 import guulingoviLogo from "./assets/logos/guulingovi.png";
+import { WeatherReport } from "./WeatherReport.jsx";
 import "./styles.css";
 
 const emptyEmployee = () => ({ name: "", position: "", phone: "" });
@@ -140,6 +141,9 @@ function App() {
   const [signature, setSignature] = useState("");
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState("");
+  // Route and date of the last accepted submission, kept for the success
+  // screen's weather lookup after the form itself is reset.
+  const [weatherQuery, setWeatherQuery] = useState(null);
 
   const [form, setForm] = useState(initialForm);
 
@@ -288,6 +292,11 @@ function App() {
         throw new Error(data.error || "Failed to send the form.");
       }
 
+      setWeatherQuery({
+        direction: form.direction,
+        otherDirection: form.otherDirection,
+        travelDate: form.travelDate
+      });
       setSubmitted(true);
       setAccepted(false);
       setSignature("");
@@ -319,13 +328,21 @@ function App() {
       <div className="app">
         <AppBar company={form.company} />
         <main className="successPage">
-          <div className="successCard">
+          <div className={weatherQuery ? "successCard successCard--weather" : "successCard"}>
             <div className="successIcon">
               <CheckCircle2 size={40} strokeWidth={2.2} />
             </div>
             <h2>Амжилттай илгээгдлээ</h2>
             <p>Аяллын мэдээлэл бүртгэгдлээ. Аюулгүй аялаарай!</p>
-            <button type="button" className="btn btnPrimary" onClick={() => setSubmitted(false)}>
+            {weatherQuery && <WeatherReport query={weatherQuery} />}
+            <button
+              type="button"
+              className="btn btnPrimary"
+              onClick={() => {
+                setSubmitted(false);
+                setWeatherQuery(null);
+              }}
+            >
               <RotateCcw size={18} /> Шинэ маягт бөглөх
             </button>
           </div>

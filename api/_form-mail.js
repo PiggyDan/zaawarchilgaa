@@ -10,6 +10,8 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { getRouteWeather } from "./_route-weather.js";
+import { buildWeatherHtml, buildWeatherText } from "./_weather-email.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PDFKit's built-in fonts (Helvetica etc.) have no Cyrillic glyphs, so
@@ -376,7 +378,7 @@ function validate(form, employees) {
   return missing;
 }
 
-function buildHtml(form, employees, hasSignature) {
+export function buildHtml(form, employees, hasSignature, weather = null) {
   const row = (label, value) => `
         <tr>
           <td style="padding:8px 12px; background:#f9fafb; border:1px solid #e5e7eb; width:200px; vertical-align:top;">${esc(label)}</td>
@@ -430,6 +432,7 @@ function buildHtml(form, employees, hasSignature) {
             <td style="padding:12px; border:1px solid #e5e7eb;">${signatureCell}</td>
           </tr>
         </table>
+${buildWeatherHtml(weather)}
 
         <p style="margin:20px 0 0; font-size:12px; color:#6b7280;">
           Энэ мэдэгдлийг аяллын зааварчилгааны маягт автоматаар илгээв.
@@ -440,7 +443,7 @@ function buildHtml(form, employees, hasSignature) {
 </html>`;
 }
 
-function buildText(form, employees) {
+export function buildText(form, employees, weather = null) {
   const direction = form.direction === "Бусад" ? form.otherDirection : form.direction;
 
   const lines = [
@@ -463,6 +466,9 @@ function buildText(form, employees) {
   });
 
   lines.push("", "Гарын үсэг хавсралтад байна.");
+
+  const weatherText = buildWeatherText(weather);
+  if (weatherText) lines.push("", weatherText);
 
   return lines.join("\n");
 }
@@ -615,6 +621,10 @@ export async function sendFormMail(payload) {
     };
   }
 
+  // Fetched alongside PDF generation. getRouteWeather never rejects, and an
+  // unavailable forecast only changes the email's weather section.
+  const weatherPromise = getRouteWeather(form).catch(() => null);
+
   let pdf;
   try {
     pdf = {
@@ -626,11 +636,13 @@ export async function sendFormMail(payload) {
     return { status: 500, body: { error: "PDF үүсгэхэд алдаа гарлаа." } };
   }
 
+  const weather = await weatherPromise;
+
   const message = {
     to: recipients(),
     subject: buildSubject(form, employees),
-    html: buildHtml(form, employees, true),
-    text: buildText(form, employees),
+    html: buildHtml(form, employees, true, weather),
+    text: buildText(form, employees, weather),
     signature,
     pdf
   };
