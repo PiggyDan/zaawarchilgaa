@@ -25,7 +25,7 @@ import guulingoviLogo from "./assets/logos/guulingovi.png";
 import { WeatherReport } from "./WeatherReport.jsx";
 import "./styles.css";
 
-const emptyEmployee = () => ({ name: "", position: "", phone: "" });
+const emptyEmployee = () => ({ name: "", code: "", position: "", phone: "" });
 
 const companyOptions = [
   {
@@ -183,7 +183,8 @@ function App() {
       title: "Зорчих ажилтан",
       icon: Users,
       done: employees.every(
-        (employee) => employee.name.trim() && employee.position.trim() && employee.phone.trim()
+        (employee) =>
+          employee.name.trim() && employee.code.trim() && employee.position.trim() && employee.phone.trim()
       )
     },
     {
@@ -249,6 +250,7 @@ function App() {
 
     employees.forEach((employee, index) => {
       if (!employee.name.trim()) missing.push(`Ажилтан ${index + 1} - Овог нэр`);
+      if (!employee.code.trim()) missing.push(`Ажилтан ${index + 1} - Ажилтны код`);
       if (!employee.position.trim()) missing.push(`Ажилтан ${index + 1} - Албан тушаал`);
       if (!employee.phone.trim()) missing.push(`Ажилтан ${index + 1} - Утасны дугаар`);
     });
@@ -611,6 +613,19 @@ function App() {
                       value={employee.name}
                       onChange={(e) => updateEmployee(index, "name", e.target.value)}
                       placeholder="Овог нэр"
+                    />
+                  </Field>
+
+                  <Field label="Ажилтны код" required>
+                    <input
+                      required
+                      name="employee-code"
+                      value={employee.code}
+                      onChange={(e) => updateEmployee(index, "code", e.target.value.toUpperCase().replace(/\s+/g, ""))}
+                      placeholder="ж: TK0026, GK0101"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      maxLength={20}
                     />
                   </Field>
 

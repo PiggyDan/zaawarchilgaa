@@ -50,6 +50,8 @@ Object.assign(process.env, {
   GOOGLE_DRIVE_FOLDER_ID: "test"
 });
 delete process.env.MAIL_TO;
+// GKK Workforce hand-off is off unless a test turns it on.
+for (const k of ["WORKFORCE_URL", "WORKFORCE_KEY_ID", "WORKFORCE_SECRET"]) delete process.env[k];
 
 const { sendFormMail } = await import("../api/_form-mail.js");
 const { clearWeatherCache } = await import("../api/_route-weather.js");
@@ -74,7 +76,7 @@ const payload = (direction) => ({
     driver: "Бат 88000000",
     vehicle: "Toyota Land Cruiser 200, 00-00 УБА"
   },
-  employees: [{ name: "Тест Ажилтан", position: "Инженер", phone: "99000000" }],
+  employees: [{ name: "Тест Ажилтан", code: "TK0026", position: "Инженер", phone: "99000000" }],
   signature: SIGNATURE
 });
 
@@ -184,4 +186,57 @@ test("the PDF attachment includes the weather section when weather is available"
   await sendFormMail(data);
   const attached = sent[0].attachments.find((a) => a.contentType === "application/pdf");
   assert.ok(pages(attached.content) > pages(without));
+});
+
+test("the employee code is required", async () => {
+  serveForecast();
+  const data = payload("Улаанбаатар - Цагаанхад");
+  data.employees[0] = { ...data.employees[0], code: "  " };
+  const { status, body } = await sendFormMail(data);
+  assert.equal(status, 400);
+  assert.match(body.error, /Ажилтны код/);
+  assert.equal(sent.length, 0);
+});
+
+test("the employee code is shown in the email", async () => {
+  serveForecast();
+  const { status } = await sendFormMail(payload("Улаанбаатар - Цагаанхад"));
+  assert.equal(status, 200);
+  assert.match(sent[0].html, /Ажилтны код/);
+  assert.match(sent[0].html, /TK0026/);
+  assert.match(sent[0].text, /TK0026/);
+});
+
+test("Workforce not configured: the form works exactly as before", async () => {
+  serveForecast();
+  const { status, body } = await sendFormMail(payload("Улаанбаатар - Цагаанхад"));
+  assert.equal(status, 200);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(body.workforce, { sent: 0, failed: 0, skipped: "not_configured" });
+});
+
+test("Workforce down: the email and PDF still succeed and the employee sees success", async () => {
+  Object.assign(process.env, {
+    WORKFORCE_URL: "https://workforce.test.invalid",
+    WORKFORCE_KEY_ID: "office-1",
+    WORKFORCE_SECRET: "s".repeat(40)
+  });
+  const workforceCalls = [];
+  globalThis.fetch = async (url) => {
+    if (String(url).startsWith("https://workforce.test.invalid")) {
+      workforceCalls.push(String(url));
+      throw new Error("ECONNREFUSED");
+    }
+    return { status: 503, ok: false, headers: { get: () => null }, json: async () => ({}) };
+  };
+  try {
+    const { status, body } = await sendFormMail(payload("Улаанбаатар - Цагаанхад"));
+    assert.equal(status, 200);
+    assert.equal(sent.length, 1);
+    assert.equal(uploads.length, 1);
+    assert.equal(workforceCalls.length, 1);
+    assert.deepEqual(body.workforce, { sent: 0, failed: 1 });
+  } finally {
+    for (const k of ["WORKFORCE_URL", "WORKFORCE_KEY_ID", "WORKFORCE_SECRET"]) delete process.env[k];
+  }
 });
