@@ -3,9 +3,9 @@
  * statuses update automatically. Runs after the email and Drive PDF succeed.
  *
  * It never throws and never changes the form's response: if Workforce is unreachable or
- * not configured, the form behaves exactly as before. Only the minimum is sent — employee
- * code, name (for HR when a code is mistyped), company, route and travel date. No phone
- * numbers, signatures or PDFs.
+ * not configured, the form behaves exactly as before. Only the minimum is sent — phone and
+ * name (Workforce identifies the employee by phone + name against Odoo), company, route and
+ * travel date. No signatures, positions or PDFs.
  *
  * Requests are HMAC-signed (see GKK Workforce docs/INTEGRATIONS.md):
  *   X-GKK-Signature = hex(HMAC_SHA256(secret, `${timestamp}.${nonce}.${rawBody}`))
@@ -36,7 +36,7 @@ export function buildEvents(form, employees, { submissionId, submittedAt }) {
     eventId: `${submissionId}-${index + 1}`,
     submittedAt,
     employee: {
-      ...(employee.code?.trim() ? { employeeCode: employee.code.trim().toUpperCase() } : {}),
+      phone: employee.phone?.replace(/\D/g, "") || undefined,
       fullName: employee.name?.trim() || undefined,
       companyName: form.company || undefined
     },

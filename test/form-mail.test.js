@@ -76,7 +76,7 @@ const payload = (direction) => ({
     driver: "Бат 88000000",
     vehicle: "Toyota Land Cruiser 200, 00-00 УБА"
   },
-  employees: [{ name: "Тест Ажилтан", code: "TK0026", position: "Инженер", phone: "99000000" }],
+  employees: [{ name: "Тест Ажилтан", position: "Инженер", phone: "99000000" }],
   signature: SIGNATURE
 });
 
@@ -186,25 +186,6 @@ test("the PDF attachment includes the weather section when weather is available"
   await sendFormMail(data);
   const attached = sent[0].attachments.find((a) => a.contentType === "application/pdf");
   assert.ok(pages(attached.content) > pages(without));
-});
-
-test("the employee code is required", async () => {
-  serveForecast();
-  const data = payload("Улаанбаатар - Цагаанхад");
-  data.employees[0] = { ...data.employees[0], code: "  " };
-  const { status, body } = await sendFormMail(data);
-  assert.equal(status, 400);
-  assert.match(body.error, /Ажилтны код/);
-  assert.equal(sent.length, 0);
-});
-
-test("the employee code is shown in the email", async () => {
-  serveForecast();
-  const { status } = await sendFormMail(payload("Улаанбаатар - Цагаанхад"));
-  assert.equal(status, 200);
-  assert.match(sent[0].html, /Ажилтны код/);
-  assert.match(sent[0].html, /TK0026/);
-  assert.match(sent[0].text, /TK0026/);
 });
 
 test("Workforce not configured: the form works exactly as before", async () => {

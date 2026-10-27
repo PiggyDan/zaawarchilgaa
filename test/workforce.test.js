@@ -10,8 +10,8 @@ const form = (direction, otherDirection = "") => ({
   otherDirection
 });
 const employees = [
-  { name: "Долгион Тест", code: "tk0026", position: "Инженер", phone: "99000000" },
-  { name: "Бат Болд", code: "GK0101", position: "Жолооч", phone: "88000000" }
+  { name: "Долгион Тест", position: "Инженер", phone: "9900-0000" },
+  { name: "Бат Болд", position: "Жолооч", phone: "+976 88000000" }
 ];
 
 test("parseRoute reads the fixed route list", () => {
@@ -30,7 +30,7 @@ test("an unparseable route is passed on as unknown (HR decides), never guessed",
   assert.deepEqual(parseRoute(form("Бусад", "Говь руу")), { origin: "Тодорхойгүй", destination: "Говь руу" });
 });
 
-test("one event per traveller, with only the minimum data", () => {
+test("one event per traveller, with only the minimum data (phone + name, no position)", () => {
   const events = buildEvents(form("Улаанбаатар - Цагаанхад"), employees, {
     submissionId: "sub-1",
     submittedAt: "2026-10-27T03:00:00.000Z"
@@ -39,13 +39,14 @@ test("one event per traveller, with only the minimum data", () => {
   assert.deepEqual(events[0], {
     eventId: "sub-1-1",
     submittedAt: "2026-10-27T03:00:00.000Z",
-    employee: { employeeCode: "TK0026", fullName: "Долгион Тест", companyName: "Цагаанхад Мөнхийн Их ХХК" },
+    employee: { phone: "99000000", fullName: "Долгион Тест", companyName: "Цагаанхад Мөнхийн Их ХХК" },
     origin: "Улаанбаатар",
     destination: "Цагаанхад",
     departureDate: "2026-10-29"
   });
+  assert.equal(events[1].employee.phone, "97688000000");
   assert.equal(events[1].eventId, "sub-1-2");
-  assert.ok(!JSON.stringify(events).includes("99000000"), "no phone numbers");
+  assert.ok(!JSON.stringify(events).includes("Инженер"), "no positions");
 });
 
 test("not configured: nothing is sent", async () => {

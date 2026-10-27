@@ -222,7 +222,6 @@ export async function buildPdfBuffer(form, employees, signature, weather = null)
   employees.forEach((employee, idx) => {
     block({ text: `Ажилтан ${idx + 1}`, bold: true, size: 10, background: LABEL_BG });
     fieldRow("Овог нэр", employee.name);
-    fieldRow("Ажилтны код", employee.code);
     fieldRow("Албан тушаал", employee.position);
     fieldRow("Утасны дугаар", employee.phone);
   });
@@ -452,7 +451,6 @@ function validate(form, employees) {
 
   employees.forEach((employee, index) => {
     if (!employee?.name?.trim()) missing.push(`Ажилтан ${index + 1} - Овог нэр`);
-    if (!employee?.code?.trim()) missing.push(`Ажилтан ${index + 1} - Ажилтны код`);
     if (!employee?.position?.trim()) missing.push(`Ажилтан ${index + 1} - Албан тушаал`);
     if (!employee?.phone?.trim()) missing.push(`Ажилтан ${index + 1} - Утасны дугаар`);
   });
@@ -472,7 +470,7 @@ export function buildHtml(form, employees, hasSignature, weather = null) {
       (employee, index) => `
         <tr>
           <td colspan="2" style="padding:10px 12px; background:#eef2ff; border:1px solid #e5e7eb; font-weight:700;">Ажилтан ${index + 1}</td>
-        </tr>${row("Овог нэр", employee.name)}${row("Ажилтны код", employee.code)}${row("Албан тушаал", employee.position)}${row("Утасны дугаар", employee.phone)}`
+        </tr>${row("Овог нэр", employee.name)}${row("Албан тушаал", employee.position)}${row("Утасны дугаар", employee.phone)}`
     )
     .join("");
 
@@ -543,7 +541,7 @@ export function buildText(form, employees, weather = null) {
 
   employees.forEach((employee, index) => {
     lines.push(
-      `Ажилтан ${index + 1}: ${employee.name} | ${employee.code ?? ""} | ${employee.position} | ${employee.phone}`
+      `Ажилтан ${index + 1}: ${employee.name} | ${employee.position} | ${employee.phone}`
     );
   });
 
